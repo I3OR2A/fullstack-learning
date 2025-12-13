@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
+from datetime import datetime
 
 from database import SessionLocal, engine
 from models import Base, Todo
@@ -36,6 +37,8 @@ class TodoCreate(BaseModel):
 class TodoItem(BaseModel):
     id: int
     text: str
+    is_done: bool
+    created_at: datetime
 
     class Config:
         orm_mode = True  # 讓 FastAPI 可以把 ORM 物件轉成這個 Pydantic model
@@ -67,7 +70,12 @@ def list_todos(db: Session = Depends(get_db)):
 
 @app.post("/todos", response_model=TodoItem)
 def create_todo(todo: TodoCreate, db: Session = Depends(get_db)):
-    db_todo = Todo(text=todo.text)
+    db_todo = Todo(
+        text=todo.text,
+        # is_done 和 created_at 可以不寫，會用 default
+        # is_done=False,
+        # created_at=datetime.utcnow(),
+    )
     db.add(db_todo)
     db.commit()
     db.refresh(db_todo)  # 取得 DB 寫入後的完整資料（包含 id）
@@ -84,3 +92,16 @@ def delete_todo(todo_id: int, db: Session = Depends(get_db)):
     db.delete(db_todo)
     db.commit()
     return {"deleted_id": todo_id}
+
+@app.patch("/todos/{todo_id}/toggle", response_model=TodoItem)
+def toggle_todo(todo_id: int, db: Session = Depends(get_db)):
+    db_todo = db.query(Todo).filter(Todo.id == todo_id).first()
+    if db_todo is None:
+        raise HTTPException(status_code=404, detail="Todo not found")
+
+    # 切換完成狀態
+    db_todo.is_done = not db_todo.is_done
+
+    db.commit()
+    db.refresh(db_todo)
+    return db_todo

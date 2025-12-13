@@ -1,12 +1,12 @@
 // src/App.jsx
 import { useEffect, useState } from "react";
 import TodoItem from "./TodoItem";
-import { fetchTodos, createTodo, deleteTodo } from "./api";
+import { fetchTodos, createTodo, deleteTodo, toggleTodo } from "./api";
 
 function App() {
   const [input, setInput] = useState("");
   const [todos, setTodos] = useState([]);
-  const [loading, setLoading] = useState(false);   // 顯示 loading 狀態
+  const [loading, setLoading] = useState(false); // 顯示 loading 狀態
   const [error, setError] = useState("");
 
   // 🧠 進入頁面時，載入後端的 todos
@@ -56,14 +56,28 @@ function App() {
     }
   };
 
+  // 切換完成/未完成
+  const handleToggleTodo = async (id) => {
+    try {
+      setLoading(true);
+      const updated = await toggleTodo(id);
+      setTodos(todos.map((t) => (t.id === id ? updated : t)));
+    } catch (err) {
+      setError(err.message || "更新狀態失敗");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div style={{ padding: 20 }}>
-      <h2>ToDo List（已串接 FastAPI）</h2>
+      <h2>ToDo List（FastAPI + SQLite）</h2>
 
       {error && <p style={{ color: "red" }}>{error}</p>}
       {loading && <p>處理中...</p>}
 
-      <input value={input}
+      <input
+        value={input}
         onChange={(e) => setInput(e.target.value)}
         placeholder="輸入待辦事項"
       />
@@ -75,9 +89,13 @@ function App() {
         {todos.length === 0 && !loading && <p>目前沒有待辦事項</p>}
 
         {todos.map((todo) => (
-          <TodoItem key={todo.id}
+          <TodoItem
+            key={todo.id}
             text={todo.text}
+            isDone={todo.is_done}
+            createdAt={todo.created_at}
             onDelete={() => handleDeleteTodo(todo.id)}
+            onToggle={() => handleToggleTodo(todo.id)}
           />
         ))}
       </div>
