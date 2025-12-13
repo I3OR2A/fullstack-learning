@@ -4,6 +4,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
 
+from database import SessionLocal, engine
+from models import Base, Todo
+from sqlalchemy.orm import Session
+
 app = FastAPI()
 
 # 讓前端 React (http://localhost:5173) 可以呼叫這個 API（CORS 設定）
@@ -20,7 +24,11 @@ app.add_middleware(
 )
 
 
-# ---------- 資料模型（Pydantic Model） ----------
+# ✅ 啟動時建立資料表（如果不存在）
+Base.metadata.create_all(bind=engine)
+
+
+# ---------- Pydantic Models（給 API 用） ----------
 
 class TodoCreate(BaseModel):
     text: str
@@ -29,10 +37,18 @@ class TodoItem(BaseModel):
     id: int
     text: str
 
-# ---------- 模擬資料庫：放在記憶體裡 ----------
+    class Config:
+        orm_mode = True  # 讓 FastAPI 可以把 ORM 物件轉成這個 Pydantic model
 
-todos: List[TodoItem] = []
-next_id = 1
+
+# ---------- 取得 DB Session 的 Dependency ----------
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 # ---------- API Endpoints ----------
@@ -41,20 +57,30 @@ next_id = 1
 def health_check():
     return {"status": "ok"}
 
+from sqlalchemy.orm import Session
+from fastapi import Depends
+
 @app.get("/todos", response_model=List[TodoItem])
-def list_todos():
+def list_todos(db: Session = Depends(get_db)):
+    todos = db.query(Todo).all()
     return todos
 
 @app.post("/todos", response_model=TodoItem)
-def create_todo(todo: TodoCreate):
-    global next_id
-    new_todo = TodoItem(id=next_id, text=todo.text)
-    next_id += 1
-    todos.append(new_todo)
-    return new_todo
+def create_todo(todo: TodoCreate, db: Session = Depends(get_db)):
+    db_todo = Todo(text=todo.text)
+    db.add(db_todo)
+    db.commit()
+    db.refresh(db_todo)  # 取得 DB 寫入後的完整資料（包含 id）
+    return db_todo
+
+from fastapi import HTTPException
 
 @app.delete("/todos/{todo_id}")
-def delete_todo(todo_id: int):
-    global todos
-    todos = [t for t in todos if t.id != todo_id]
+def delete_todo(todo_id: int, db: Session = Depends(get_db)):
+    db_todo = db.query(Todo).filter(Todo.id == todo_id).first()
+    if db_todo is None:
+        raise HTTPException(status_code=404, detail="Todo not found")
+
+    db.delete(db_todo)
+    db.commit()
     return {"deleted_id": todo_id}
