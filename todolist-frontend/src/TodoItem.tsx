@@ -1,8 +1,5 @@
-// TodoItem.tsx
-
+// src/TodoItem.jsx
 function TodoItem({ text, onDelete }) {
-  // props: text = 待辦文字, onDelete = 父層傳進來的刪除函式
-
   return (
     <div style={{ marginTop: 8 }}>
       <span>{text}</span>
